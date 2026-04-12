@@ -8,8 +8,7 @@ from handlers import start, shop, profile, orders, wallet
 
 async def main():
     init_db()
-seed_sample_data()
-
+    seed_sample_data()
 
     bot = Bot(
         token=BOT_TOKEN,
@@ -27,4 +26,3 @@ seed_sample_data()
 
 if __name__ == "__main__":
     asyncio.run(main())
-
