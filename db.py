@@ -86,30 +86,7 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_topup_orders_user_created
         ON topup_orders(user_id, created_at DESC)
         """)
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS topup_orders (
-            id BIGSERIAL PRIMARY KEY,
-            user_id BIGINT NOT NULL,
-            amount DOUBLE PRECISION NOT NULL,
-            status TEXT DEFAULT 'pending',
-            created_at BIGINT NOT NULL
-        )
-        """)
-
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS topup_tx_claims (
-            txid TEXT PRIMARY KEY,
-            topup_order_id BIGINT NOT NULL,
-            created_at BIGINT NOT NULL
-        )
-        """)
-
-        cur.execute("""
-        CREATE INDEX IF NOT EXISTS idx_topup_orders_user_created
-        ON topup_orders(user_id, created_at DESC)
-        """)
-
-
+        
 def upsert_user(user_id, username="", full_name=""):
     with get_db(commit=True) as (_, cur):
         cur.execute("""
@@ -215,94 +192,6 @@ def seed_sample_data():
             VALUES (%s, %s, %s, %s, %s)
             """, (category_id, title, price, stock, description))
 # ================= TOPUP ORDERS =================
-def create_topup_order(user_id, amount):
-    with get_db(commit=True) as (_, cur):
-        cur.execute("""
-        INSERT INTO topup_orders(user_id, amount, status, created_at)
-        VALUES (%s, %s, 'pending', %s)
-        RETURNING id
-        """, (int(user_id), float(amount), int(time.time())))
-        return cur.fetchone()[0]
-
-
-def get_user_topup_orders(user_id):
-    with get_db() as (_, cur):
-        cur.execute("""
-        SELECT id, amount, status, created_at
-        FROM topup_orders
-        WHERE user_id=%s
-        ORDER BY id DESC
-        """, (int(user_id),))
-        return cur.fetchall()
-
-
-def get_topup_order(order_id):
-    with get_db() as (_, cur):
-        cur.execute("""
-        SELECT id, user_id, amount, status, created_at
-        FROM topup_orders
-        WHERE id=%s
-        """, (int(order_id),))
-        return cur.fetchone()
-
-
-def get_topup_orders(status=None, limit=100):
-    with get_db() as (_, cur):
-        if status:
-            cur.execute("""
-            SELECT id, user_id, amount, status, created_at
-            FROM topup_orders
-            WHERE status=%s
-            ORDER BY id DESC
-            LIMIT %s
-            """, (status, int(limit)))
-        else:
-            cur.execute("""
-            SELECT id, user_id, amount, status, created_at
-            FROM topup_orders
-            ORDER BY id DESC
-            LIMIT %s
-            """, (int(limit),))
-        return cur.fetchall()
-
-
-def mark_topup_order_paid(order_id):
-    with get_db(commit=True) as (_, cur):
-        cur.execute("""
-        UPDATE topup_orders
-        SET status='paid'
-        WHERE id=%s
-        """, (int(order_id),))
-
-
-def mark_topup_order_rejected(order_id):
-    with get_db(commit=True) as (_, cur):
-        cur.execute("""
-        UPDATE topup_orders
-        SET status='rejected'
-        WHERE id=%s
-        """, (int(order_id),))
-def add_user_balance(user_id, amount):
-    with get_db(commit=True) as (_, cur):
-        cur.execute("""
-        UPDATE users
-        SET balance = COALESCE(balance, 0) + %s
-        WHERE user_id=%s
-        """, (float(amount), int(user_id)))
-
-
-def approve_topup_order(order_id):
-    row = get_topup_order(order_id)
-    if not row:
-        return None, "订单不存在"
-
-    _id, user_id, amount, status, created_at = row
-    if status == "paid":
-        return row, "订单已支付"
-
-    mark_topup_order_paid(order_id)
-    add_user_balance(user_id, amount)
-    return row, None
 # ================= TOPUP ORDERS =================
 def create_topup_order(user_id, amount):
     with get_db(commit=True) as (_, cur):
@@ -405,5 +294,3 @@ def claim_topup_tx(txid, topup_order_id):
         RETURNING txid
         """, (str(txid), int(topup_order_id), int(time.time())))
         return cur.fetchone() is not None
-
-
