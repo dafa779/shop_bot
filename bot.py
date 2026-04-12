@@ -3,7 +3,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 
 from config import BOT_TOKEN
-from db import init_db
+from db import init_db, seed_sample_data
 from handlers import start, shop, profile, orders, wallet
 
 async def main():
