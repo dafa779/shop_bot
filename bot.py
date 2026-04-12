@@ -8,6 +8,8 @@ from handlers import start, shop, profile, orders, wallet
 
 async def main():
     init_db()
+seed_sample_data()
+
 
     bot = Bot(
         token=BOT_TOKEN,
