@@ -140,3 +140,41 @@ def get_user_orders(user_id):
         """, (int(user_id),))
         return cur.fetchall()
 
+def seed_sample_data():
+    with get_db(commit=True) as (_, cur):
+        cur.execute("SELECT COUNT(*) FROM categories")
+        if (cur.fetchone() or [0])[0] > 0:
+            return
+
+        categories = [
+            ("fancy", "✨ Fancy Number"),
+            ("country", "🌍 Country / Area Code"),
+            ("aged", "💎 Aged Accounts"),
+            ("energy", "⚡ Energy Rental"),
+        ]
+
+        cat_ids = {}
+        for code, title in categories:
+            cur.execute("""
+            INSERT INTO categories(code, title)
+            VALUES (%s, %s)
+            RETURNING id
+            """, (code, title))
+            cat_ids[code] = cur.fetchone()[0]
+
+        products = [
+            (cat_ids["fancy"], "Random 5A Fancy Number Ending with Digit 1", 6.62, 8, "All accounts are guaranteed for first-login."),
+            (cat_ids["country"], "+84 Vietnam~February-May", 0.95, 85, "Session / API Link available."),
+            (cat_ids["country"], "+66 Thailand~February-May", 1.47, 1281, "Session / API Link available."),
+            (cat_ids["country"], "+1 USA~February-May", 0.60, 7214, "Session / API Link available."),
+            (cat_ids["aged"], "1-2 Year Old Accounts", 9.99, 120, "Suitable for long-term usage."),
+            (cat_ids["aged"], "3-4 Year Old Accounts", 19.99, 65, "Higher trust age."),
+            (cat_ids["energy"], "TRON Energy Flash Rental", 2.50, 999, "Fast rental for TRX network."),
+        ]
+
+        for category_id, title, price, stock, description in products:
+            cur.execute("""
+            INSERT INTO products(category_id, title, price, stock, description)
+            VALUES (%s, %s, %s, %s, %s)
+            """, (category_id, title, price, stock, description))
+
