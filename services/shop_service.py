@@ -21,31 +21,39 @@ def fetch_product(product_id: int):
 
     product_id, category_id, title, price, stock, description = row
     return {
-        "id": product_id,
-        "category_id": category_id,
+        "id": int(product_id),
+        "category_id": int(category_id),
         "title": title,
         "price": float(price),
-        "stock": int(stock),
+        "stock": int(stock or 0),
         "description": description or "",
     }
 
 
 def build_product_text(product: dict) -> str:
     return (
-        f"✅ You are purchasing: <b>{product['title']}</b>\n\n"
+        f"🛍 <b>Product Details</b>\n\n"
+        f"📌 Name: <b>{product['title']}</b>\n"
         f"💰 Price: <b>{product['price']:.2f} USDT</b>\n"
         f"📦 Stock: <b>{product['stock']}</b>\n\n"
-        f"⚠️ {product['description'] or 'Please test with small quantity first.'}"
+        f"📝 Note:\n"
+        f"{product['description'] or 'Please test with a small quantity first.'}"
     )
 
 
 def validate_quantity_text(text: str):
-    if not text or not text.isdigit():
+    raw = (text or "").strip()
+
+    if not raw.isdigit():
         return None, "❌ Please enter a valid number"
 
-    qty = int(text)
+    qty = int(raw)
+
     if qty <= 0:
         return None, "❌ Quantity must be greater than 0"
+
+    if qty > 100000:
+        return None, "❌ Quantity too large"
 
     return qty, None
 
@@ -56,10 +64,10 @@ def create_product_order(user_id: int, product_id: int, qty: int):
 
 def build_order_success_text(order: dict) -> str:
     return (
-        f"✅ Order created\n"
-        f"Order ID: <code>{order['order_id']}</code>\n"
-        f"Product: <b>{order['title']}</b>\n"
-        f"Quantity: <b>{order['qty']}</b>\n"
-        f"Amount: <b>{order['amount']:.2f} USDT</b>\n"
-        f"Status: <b>{order['status']}</b>"
+        f"✅ <b>Order created successfully</b>\n\n"
+        f"🆔 Order ID: <code>{order['order_id']}</code>\n"
+        f"📦 Product: <b>{order['title']}</b>\n"
+        f"🔢 Quantity: <b>{order['qty']}</b>\n"
+        f"💵 Amount: <b>{order['amount']:.2f} USDT</b>\n"
+        f"📌 Status: <b>{order['status']}</b>"
     )
