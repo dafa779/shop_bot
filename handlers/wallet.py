@@ -1,6 +1,7 @@
 from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
 
+from config import PAYMENT_ADDRESS
 from keyboards.wallet import topup_amounts_kb
 from states import WalletFSM
 from services.wallet_service import (
@@ -13,13 +14,12 @@ from services.wallet_service import (
 
 router = Router()
 
-PAYMENT_ADDRESS = "TSPpLmYuFXLi6GU1W4uyG6NKGbdWPw886U"
-
 
 @router.callback_query(F.data == "menu:topup")
 async def menu_topup(c: types.CallbackQuery):
     await c.message.answer(
         build_topup_menu_text(c.from_user.id),
+        parse_mode="HTML",
         reply_markup=topup_amounts_kb()
     )
     await c.answer()
@@ -31,7 +31,10 @@ async def topup_select(c: types.CallbackQuery, state: FSMContext):
 
     if value == "custom":
         await state.set_state(WalletFSM.waiting_custom_amount)
-        await c.message.answer("💰 Please enter custom amount in USDT:")
+        await c.message.answer(
+            "💰 <b>Please enter custom amount in USDT:</b>",
+            parse_mode="HTML"
+        )
         await c.answer()
         return
 
@@ -68,7 +71,10 @@ async def topup_custom_amount(message: types.Message, state: FSMContext):
 
 @router.callback_query(F.data == "menu:topup_orders")
 async def menu_topup_orders(c: types.CallbackQuery):
-    await c.message.answer(build_topup_orders_text(c.from_user.id))
+    await c.message.answer(
+        build_topup_orders_text(c.from_user.id),
+        parse_mode="HTML"
+    )
     await c.answer()
 
 
@@ -86,16 +92,17 @@ async def menu_lang(c: types.CallbackQuery):
 
 @router.callback_query(F.data == "menu:support")
 async def menu_support(c: types.CallbackQuery):
-    await c.message.answer("👨‍💻 联系客服: @support")
+    await c.message.answer("👨‍💻 Contact support: @support")
     await c.answer()
 
 
 @router.callback_query(F.data == "menu:notice")
 async def menu_notice(c: types.CallbackQuery):
     await c.message.answer(
-        "NOTE:\n"
+        "📢 <b>Notice</b>\n\n"
         "Please keep the account files you receive safe.\n"
-        "We only keep your purchase records; the account files are automatically deleted from stock after delivery."
+        "We only keep your purchase records; the account files are automatically deleted from stock after delivery.",
+        parse_mode="HTML"
     )
     await c.answer()
 
@@ -103,10 +110,11 @@ async def menu_notice(c: types.CallbackQuery):
 @router.callback_query(F.data == "menu:vip")
 async def menu_vip(c: types.CallbackQuery):
     await c.message.answer(
-        "💎 Telegram Premium\n\n"
+        "💎 <b>Telegram Premium</b>\n\n"
         "请选择操作：\n"
         "1. 为此账号开通\n"
         "2. 赠送他人会员\n"
-        "3. 余额充值"
+        "3. 余额充值",
+        parse_mode="HTML"
     )
     await c.answer()
