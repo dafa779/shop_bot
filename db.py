@@ -86,7 +86,7 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_topup_orders_user_created
         ON topup_orders(user_id, created_at DESC)
         """)
-                cur.execute("""
+        cur.execute("""
         CREATE TABLE IF NOT EXISTS topup_tx_claims (
             txid TEXT PRIMARY KEY,
             topup_order_id BIGINT REFERENCES topup_orders(id) ON DELETE CASCADE,
@@ -207,7 +207,7 @@ def seed_sample_data():
             INSERT INTO products(category_id, title, price, stock, description)
             VALUES (%s, %s, %s, %s, %s)
             """, (category_id, title, price, stock, description))
-# ================= TOPUP ORDERS =================
+
 # ================= TOPUP ORDERS =================
 def create_topup_order(user_id, amount):
     with get_db(commit=True) as (_, cur):
@@ -288,25 +288,106 @@ def add_user_balance(user_id, amount):
 
 
 def approve_topup_order(order_id):
-    row = get_topup_order(order_id)
-    if not row:
-        return None, "订单不存在"
-
-    _id, user_id, amount, status, created_at = row
-    if status == "paid":
-        return row, "订单已支付"
-
-    mark_topup_order_paid(order_id)
-    add_user_balance(user_id, amount)
-    return row, None
-
-
-def claim_topup_tx(txid, topup_order_id):
     with get_db(commit=True) as (_, cur):
         cur.execute("""
-        INSERT INTO topup_tx_claims(txid, topup_order_id, created_at)
-        VALUES (%s, %s, %s)
-        ON CONFLICT(txid) DO NOTHING
-        RETURNING txid
-        """, (str(txid), int(topup_order_id), int(time.time())))
-        return cur.fetchone() is not None
+        SELECT id, user_id, amount, status, created_at
+        FROM topup_orders
+        WHERE id=%s
+        FOR UPDATE
+        """, (int(order_id),))
+        row = cur.fetchone()
+
+        if not row:
+            return None, "订单不存在"
+
+        _id, user_id, amount, status, created_at = row
+
+        if status == "paid":
+            return row, "订单已支付"
+
+        if status == "rejected":
+            return row, "订单已拒绝"
+
+        cur.execute("""
+        UPDATE topup_orders
+        SET status='paid'
+        WHERE id=%s
+        """, (int(order_id),))
+
+        cur.execute("""
+        UPDATE users
+        SET balance = COALESCE(balance, 0) + %s
+        WHERE user_id=%s
+        """, (float(amount), int(user_id)))
+
+        return row, None
+
+    with get_db(commit=True) as (_, cur):
+        # lock user
+        cur.execute("""
+        SELECT user_id, balance
+        FROM users
+        WHERE user_id=%s
+        FOR UPDATE
+        """, (int(user_id),))
+        user_row = cur.fetchone()
+
+        if not user_row:
+            return None, "❌ User not found"
+
+        _, balance = user_row
+
+        # lock product
+        cur.execute("""
+        SELECT id, title, price, stock
+        FROM products
+        WHERE id=%s
+        FOR UPDATE
+        """, (int(product_id),))
+        product_row = cur.fetchone()
+
+        if not product_row:
+            return None, "❌ 商品不存在"
+
+        pid, title, price, stock = product_row
+
+        if qty > stock:
+            return None, "❌ Quantity exceeds stock"
+
+        amount = float(price) * qty
+
+        if float(balance or 0) < amount:
+            return None, "❌ Insufficient balance"
+
+        # deduct balance
+        cur.execute("""
+        UPDATE users
+        SET balance = COALESCE(balance, 0) - %s
+        WHERE user_id=%s
+        """, (amount, int(user_id)))
+
+        # deduct stock
+        cur.execute("""
+        UPDATE products
+        SET stock = stock - %s
+        WHERE id=%s
+        """, (qty, int(product_id)))
+
+        # create order
+        cur.execute("""
+        INSERT INTO orders(user_id, product_id, quantity, amount, status, created_at)
+        VALUES (%s, %s, %s, %s, 'paid', %s)
+        RETURNING id
+        """, (int(user_id), int(product_id), qty, amount, int(time.time())))
+
+        order_id = cur.fetchone()[0]
+
+        return {
+            "order_id": order_id,
+            "product_id": pid,
+            "title": title,
+            "price": float(price),
+            "qty": qty,
+            "amount": amount,
+            "status": "paid",
+        }, None
