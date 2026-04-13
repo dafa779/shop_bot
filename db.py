@@ -391,3 +391,13 @@ def approve_topup_order(order_id):
             "amount": amount,
             "status": "paid",
         }, None
+
+def get_user_balance(user_id):
+    with get_db() as (_, cur):
+        cur.execute("""
+        SELECT balance
+        FROM users
+        WHERE user_id=%s
+        """, (int(user_id),))
+        row = cur.fetchone()
+        return float(row[0]) if row else 0.0
