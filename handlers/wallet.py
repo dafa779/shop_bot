@@ -3,7 +3,13 @@ from aiogram.fsm.context import FSMContext
 
 from keyboards.wallet import topup_amounts_kb
 from states import WalletFSM
-from db import create_topup_order, get_user, get_user_topup_orders
+from services.wallet_service import (
+    build_topup_menu_text,
+    validate_custom_amount,
+    create_user_topup_order,
+    build_topup_created_text,
+    build_topup_orders_text,
+)
 
 router = Router()
 
@@ -12,15 +18,10 @@ PAYMENT_ADDRESS = "TSPpLmYuFXLi6GU1W4uyG6NKGbdWPw886U"
 
 @router.callback_query(F.data == "menu:topup")
 async def menu_topup(c: types.CallbackQuery):
-    row = get_user(c.from_user.id)
-    balance = row[3] if row else 0
-
-    text = (
-        f"👋 Good Morning\n\n"
-        f"🏦 Account Balance: {balance:.2f}\n"
-        f"Please select the top-up amount:"
+    await c.message.answer(
+        build_topup_menu_text(c.from_user.id),
+        reply_markup=topup_amounts_kb()
     )
-    await c.message.answer(text, reply_markup=topup_amounts_kb())
     await c.answer()
 
 
@@ -31,16 +32,19 @@ async def topup_select(c: types.CallbackQuery, state: FSMContext):
     if value == "custom":
         await state.set_state(WalletFSM.waiting_custom_amount)
         await c.message.answer("💰 Please enter custom amount in USDT:")
-        return await c.answer()
+        await c.answer()
+        return
 
-    amount = float(value)
-    order_id = create_topup_order(c.from_user.id, amount)
+    try:
+        amount = float(value)
+    except ValueError:
+        await c.answer("❌ Invalid amount", show_alert=True)
+        return
+
+    order_id = create_user_topup_order(c.from_user.id, amount)
 
     await c.message.answer(
-        f"✅ Top-up order created\n"
-        f"Order ID: <code>{order_id}</code>\n"
-        f"Amount: <b>{amount:.2f} USDT</b>\n"
-        f"Address: <code>{PAYMENT_ADDRESS}</code>",
+        build_topup_created_text(order_id, amount, PAYMENT_ADDRESS),
         parse_mode="HTML",
     )
     await c.answer()
@@ -48,42 +52,23 @@ async def topup_select(c: types.CallbackQuery, state: FSMContext):
 
 @router.message(WalletFSM.waiting_custom_amount)
 async def topup_custom_amount(message: types.Message, state: FSMContext):
-    try:
-        amount = float((message.text or "").strip())
-    except Exception:
-        return await message.answer("❌ Invalid amount")
+    amount, error = validate_custom_amount(message.text)
+    if error:
+        await message.answer(error)
+        return
 
-    if amount <= 0:
-        return await message.answer("❌ Amount must be greater than 0")
-
-    order_id = create_topup_order(message.from_user.id, amount)
+    order_id = create_user_topup_order(message.from_user.id, amount)
     await state.clear()
 
     await message.answer(
-        f"✅ Top-up order created\n"
-        f"Order ID: <code>{order_id}</code>\n"
-        f"Amount: <b>{amount:.2f} USDT</b>\n"
-        f"Address: <code>{PAYMENT_ADDRESS}</code>",
+        build_topup_created_text(order_id, amount, PAYMENT_ADDRESS),
         parse_mode="HTML",
     )
 
 
-@router.callback_query(F.data == "menu:orders")
-async def menu_orders(c: types.CallbackQuery):
-    rows = get_user_topup_orders(c.from_user.id)
-
-    if not rows:
-        await c.message.answer("📦 暂无充值订单")
-        return await c.answer()
-
-    lines = ["📦 Top-up Orders", ""]
-
-    for order_id, amount, status, created_at in rows[:20]:
-        lines.append(
-            f"• #{order_id} | {amount:.2f} USDT | {status}"
-        )
-
-    await c.message.answer("\n".join(lines))
+@router.callback_query(F.data == "menu:topup_orders")
+async def menu_topup_orders(c: types.CallbackQuery):
+    await c.message.answer(build_topup_orders_text(c.from_user.id))
     await c.answer()
 
 
