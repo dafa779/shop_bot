@@ -29,14 +29,14 @@ def build_home_text(user_id: int) -> str:
     db_user_id, username, full_name, balance, created_at = row
 
     return (
-        f"🏠 <b>Main Menu</b>\n\n"
-        f"👤 User ID: <code>{db_user_id}</code>\n"
-        f"💰 Balance: <b>{float(balance or 0):.2f} USDT</b>\n"
-        f"📅 Registered: <b>{fmt_ts(created_at)}</b>\n\n"
-        f"📢 Channel: {CHANNEL_USERNAME}\n"
-        f"🆘 Support: {SUPPORT_USERNAME}\n\n"
-        f"Please choose an option below:"
-    )
+    f"🏠 <b>Main Menu</b>\n\n"
+    f"👤 Account ID: <code>{db_user_id}</code>\n"
+    f"💰 Balance: <b>{float(balance or 0):.2f} USDT</b>\n"
+    f"📅 Since: <b>{fmt_ts(created_at)}</b>\n\n"
+    f"📢 Channel: {CHANNEL_USERNAME}\n"
+    f"🆘 Support: {SUPPORT_USERNAME}\n\n"
+    f"Please choose an option below:"
+)
 
 
 @router.message(CommandStart())
