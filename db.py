@@ -1,16 +1,26 @@
 import time
+from contextlib import contextmanager
+
 import psycopg2
 from psycopg2.pool import ThreadedConnectionPool
-from contextlib import contextmanager
+
 from config import DATABASE_URL
 
+
 _pool = ThreadedConnectionPool(1, 10, dsn=DATABASE_URL)
+
+
+def now_ts():
+    return int(time.time())
+
 
 def get_conn():
     return _pool.getconn()
 
+
 def put_conn(conn):
     _pool.putconn(conn)
+
 
 @contextmanager
 def get_db(commit=False):
@@ -33,6 +43,7 @@ def get_db(commit=False):
         if conn:
             put_conn(conn)
 
+
 def init_db():
     with get_db(commit=True) as (_, cur):
         cur.execute("""
@@ -44,6 +55,7 @@ def init_db():
             created_at BIGINT NOT NULL
         )
         """)
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS categories (
             id BIGSERIAL PRIMARY KEY,
@@ -51,6 +63,7 @@ def init_db():
             title TEXT NOT NULL
         )
         """)
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS products (
             id BIGSERIAL PRIMARY KEY,
@@ -61,6 +74,7 @@ def init_db():
             description TEXT DEFAULT ''
         )
         """)
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS orders (
             id BIGSERIAL PRIMARY KEY,
@@ -72,6 +86,7 @@ def init_db():
             created_at BIGINT NOT NULL
         )
         """)
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS topup_orders (
             id BIGSERIAL PRIMARY KEY,
@@ -83,15 +98,28 @@ def init_db():
         """)
 
         cur.execute("""
-        CREATE INDEX IF NOT EXISTS idx_topup_orders_user_created
-        ON topup_orders(user_id, created_at DESC)
-        """)
-        cur.execute("""
         CREATE TABLE IF NOT EXISTS topup_tx_claims (
             txid TEXT PRIMARY KEY,
             topup_order_id BIGINT REFERENCES topup_orders(id) ON DELETE CASCADE,
             created_at BIGINT NOT NULL
         )
+        """)
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS balance_transactions (
+            id BIGSERIAL PRIMARY KEY,
+            user_id BIGINT NOT NULL,
+            tx_type TEXT NOT NULL,
+            amount DOUBLE PRECISION NOT NULL,
+            ref_id BIGINT,
+            note TEXT DEFAULT '',
+            created_at BIGINT NOT NULL
+        )
+        """)
+
+        cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_topup_orders_user_created
+        ON topup_orders(user_id, created_at DESC)
         """)
 
         cur.execute("""
@@ -103,15 +131,25 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_products_category
         ON products(category_id, id ASC)
         """)
+
+        cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_balance_tx_user_created
+        ON balance_transactions(user_id, created_at DESC)
+        """)
+
+
+# ================= USERS =================
+
 def upsert_user(user_id, username="", full_name=""):
     with get_db(commit=True) as (_, cur):
         cur.execute("""
         INSERT INTO users(user_id, username, full_name, created_at)
         VALUES (%s, %s, %s, %s)
         ON CONFLICT(user_id) DO UPDATE SET
-            username=EXCLUDED.username,
-            full_name=EXCLUDED.full_name
-        """, (int(user_id), username, full_name, int(time.time())))
+            username = EXCLUDED.username,
+            full_name = EXCLUDED.full_name
+        """, (int(user_id), username, full_name, now_ts()))
+
 
 def get_user(user_id):
     with get_db() as (_, cur):
@@ -122,6 +160,20 @@ def get_user(user_id):
         """, (int(user_id),))
         return cur.fetchone()
 
+
+def get_user_balance(user_id):
+    with get_db() as (_, cur):
+        cur.execute("""
+        SELECT balance
+        FROM users
+        WHERE user_id=%s
+        """, (int(user_id),))
+        row = cur.fetchone()
+        return float(row[0]) if row else 0.0
+
+
+# ================= CATEGORIES / PRODUCTS =================
+
 def get_categories():
     with get_db() as (_, cur):
         cur.execute("""
@@ -130,6 +182,7 @@ def get_categories():
         ORDER BY id ASC
         """)
         return cur.fetchall()
+
 
 def get_products_by_category(category_id):
     with get_db() as (_, cur):
@@ -141,6 +194,7 @@ def get_products_by_category(category_id):
         """, (int(category_id),))
         return cur.fetchall()
 
+
 def get_product(product_id):
     with get_db() as (_, cur):
         cur.execute("""
@@ -150,14 +204,54 @@ def get_product(product_id):
         """, (int(product_id),))
         return cur.fetchone()
 
-def create_order(user_id, product_id, quantity, amount):
+
+# ================= BALANCE TX =================
+
+def add_balance_transaction(user_id, tx_type, amount, ref_id=None, note=""):
+    with get_db(commit=True) as (_, cur):
+        cur.execute("""
+        INSERT INTO balance_transactions(user_id, tx_type, amount, ref_id, note, created_at)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        """, (
+            int(user_id),
+            str(tx_type),
+            float(amount),
+            int(ref_id) if ref_id is not None else None,
+            str(note or ""),
+            now_ts(),
+        ))
+
+
+def get_user_balance_transactions(user_id, limit=50):
+    with get_db() as (_, cur):
+        cur.execute("""
+        SELECT id, tx_type, amount, ref_id, note, created_at
+        FROM balance_transactions
+        WHERE user_id=%s
+        ORDER BY id DESC
+        LIMIT %s
+        """, (int(user_id), int(limit)))
+        return cur.fetchall()
+
+
+# ================= ORDERS =================
+
+def create_order(user_id, product_id, quantity, amount, status="pending"):
     with get_db(commit=True) as (_, cur):
         cur.execute("""
         INSERT INTO orders(user_id, product_id, quantity, amount, status, created_at)
-        VALUES (%s, %s, %s, %s, 'pending', %s)
+        VALUES (%s, %s, %s, %s, %s, %s)
         RETURNING id
-        """, (int(user_id), int(product_id), int(quantity), float(amount), int(time.time())))
+        """, (
+            int(user_id),
+            int(product_id),
+            int(quantity),
+            float(amount),
+            str(status),
+            now_ts(),
+        ))
         return cur.fetchone()[0]
+
 
 def get_user_orders(user_id):
     with get_db() as (_, cur):
@@ -169,6 +263,100 @@ def get_user_orders(user_id):
         ORDER BY o.id DESC
         """, (int(user_id),))
         return cur.fetchall()
+
+
+def purchase_product(user_id, product_id, quantity):
+    qty = int(quantity)
+    if qty <= 0:
+        return None, "❌ Quantity must be greater than 0"
+
+    with get_db(commit=True) as (_, cur):
+        # lock user row
+        cur.execute("""
+        SELECT user_id, balance
+        FROM users
+        WHERE user_id=%s
+        FOR UPDATE
+        """, (int(user_id),))
+        user_row = cur.fetchone()
+
+        if not user_row:
+            return None, "❌ User not found"
+
+        _, balance = user_row
+        balance = float(balance or 0)
+
+        # lock product row
+        cur.execute("""
+        SELECT id, title, price, stock
+        FROM products
+        WHERE id=%s
+        FOR UPDATE
+        """, (int(product_id),))
+        product_row = cur.fetchone()
+
+        if not product_row:
+            return None, "❌ 商品不存在"
+
+        pid, title, price, stock = product_row
+        price = float(price)
+        stock = int(stock or 0)
+
+        if qty > stock:
+            return None, "❌ Quantity exceeds stock"
+
+        amount = price * qty
+
+        if balance < amount:
+            return None, "❌ Insufficient balance"
+
+        # deduct balance
+        cur.execute("""
+        UPDATE users
+        SET balance = COALESCE(balance, 0) - %s
+        WHERE user_id=%s
+        """, (amount, int(user_id)))
+
+        # deduct stock
+        cur.execute("""
+        UPDATE products
+        SET stock = stock - %s
+        WHERE id=%s
+        """, (qty, int(product_id)))
+
+        # create order
+        cur.execute("""
+        INSERT INTO orders(user_id, product_id, quantity, amount, status, created_at)
+        VALUES (%s, %s, %s, %s, 'paid', %s)
+        RETURNING id
+        """, (int(user_id), int(product_id), qty, amount, now_ts()))
+        order_id = cur.fetchone()[0]
+
+        # log transaction
+        cur.execute("""
+        INSERT INTO balance_transactions(user_id, tx_type, amount, ref_id, note, created_at)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        """, (
+            int(user_id),
+            "purchase",
+            -amount,
+            int(order_id),
+            f"Purchase: {title}",
+            now_ts(),
+        ))
+
+        return {
+            "order_id": order_id,
+            "product_id": pid,
+            "title": title,
+            "price": price,
+            "qty": qty,
+            "amount": amount,
+            "status": "paid",
+        }, None
+
+
+# ================= SAMPLE DATA =================
 
 def seed_sample_data():
     with get_db(commit=True) as (_, cur):
@@ -208,14 +396,16 @@ def seed_sample_data():
             VALUES (%s, %s, %s, %s, %s)
             """, (category_id, title, price, stock, description))
 
+
 # ================= TOPUP ORDERS =================
+
 def create_topup_order(user_id, amount):
     with get_db(commit=True) as (_, cur):
         cur.execute("""
         INSERT INTO topup_orders(user_id, amount, status, created_at)
         VALUES (%s, %s, 'pending', %s)
         RETURNING id
-        """, (int(user_id), float(amount), int(time.time())))
+        """, (int(user_id), float(amount), now_ts()))
         return cur.fetchone()[0]
 
 
@@ -289,6 +479,7 @@ def add_user_balance(user_id, amount):
 
 def approve_topup_order(order_id):
     with get_db(commit=True) as (_, cur):
+        # lock topup order
         cur.execute("""
         SELECT id, user_id, amount, status, created_at
         FROM topup_orders
@@ -301,6 +492,7 @@ def approve_topup_order(order_id):
             return None, "订单不存在"
 
         _id, user_id, amount, status, created_at = row
+        amount = float(amount)
 
         if status == "paid":
             return row, "订单已支付"
@@ -308,24 +500,9 @@ def approve_topup_order(order_id):
         if status == "rejected":
             return row, "订单已拒绝"
 
+        # lock user row
         cur.execute("""
-        UPDATE topup_orders
-        SET status='paid'
-        WHERE id=%s
-        """, (int(order_id),))
-
-        cur.execute("""
-        UPDATE users
-        SET balance = COALESCE(balance, 0) + %s
-        WHERE user_id=%s
-        """, (float(amount), int(user_id)))
-
-        return row, None
-
-    with get_db(commit=True) as (_, cur):
-        # lock user
-        cur.execute("""
-        SELECT user_id, balance
+        SELECT user_id
         FROM users
         WHERE user_id=%s
         FOR UPDATE
@@ -333,71 +510,44 @@ def approve_topup_order(order_id):
         user_row = cur.fetchone()
 
         if not user_row:
-            return None, "❌ User not found"
+            return None, "用户不存在"
 
-        _, balance = user_row
-
-        # lock product
+        # mark paid
         cur.execute("""
-        SELECT id, title, price, stock
-        FROM products
+        UPDATE topup_orders
+        SET status='paid'
         WHERE id=%s
-        FOR UPDATE
-        """, (int(product_id),))
-        product_row = cur.fetchone()
+        """, (int(order_id),))
 
-        if not product_row:
-            return None, "❌ 商品不存在"
-
-        pid, title, price, stock = product_row
-
-        if qty > stock:
-            return None, "❌ Quantity exceeds stock"
-
-        amount = float(price) * qty
-
-        if float(balance or 0) < amount:
-            return None, "❌ Insufficient balance"
-
-        # deduct balance
+        # add balance
         cur.execute("""
         UPDATE users
-        SET balance = COALESCE(balance, 0) - %s
+        SET balance = COALESCE(balance, 0) + %s
         WHERE user_id=%s
         """, (amount, int(user_id)))
 
-        # deduct stock
+        # log transaction
         cur.execute("""
-        UPDATE products
-        SET stock = stock - %s
-        WHERE id=%s
-        """, (qty, int(product_id)))
+        INSERT INTO balance_transactions(user_id, tx_type, amount, ref_id, note, created_at)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        """, (
+            int(user_id),
+            "topup",
+            amount,
+            int(order_id),
+            "Top-up approved",
+            now_ts(),
+        ))
 
-        # create order
+        return row, None
+
+
+def claim_topup_tx(txid, topup_order_id):
+    with get_db(commit=True) as (_, cur):
         cur.execute("""
-        INSERT INTO orders(user_id, product_id, quantity, amount, status, created_at)
-        VALUES (%s, %s, %s, %s, 'paid', %s)
-        RETURNING id
-        """, (int(user_id), int(product_id), qty, amount, int(time.time())))
-
-        order_id = cur.fetchone()[0]
-
-        return {
-            "order_id": order_id,
-            "product_id": pid,
-            "title": title,
-            "price": float(price),
-            "qty": qty,
-            "amount": amount,
-            "status": "paid",
-        }, None
-
-def get_user_balance(user_id):
-    with get_db() as (_, cur):
-        cur.execute("""
-        SELECT balance
-        FROM users
-        WHERE user_id=%s
-        """, (int(user_id),))
-        row = cur.fetchone()
-        return float(row[0]) if row else 0.0
+        INSERT INTO topup_tx_claims(txid, topup_order_id, created_at)
+        VALUES (%s, %s, %s)
+        ON CONFLICT(txid) DO NOTHING
+        RETURNING txid
+        """, (str(txid), int(topup_order_id), now_ts()))
+        return cur.fetchone() is not None
