@@ -86,7 +86,23 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_topup_orders_user_created
         ON topup_orders(user_id, created_at DESC)
         """)
-        
+                cur.execute("""
+        CREATE TABLE IF NOT EXISTS topup_tx_claims (
+            txid TEXT PRIMARY KEY,
+            topup_order_id BIGINT REFERENCES topup_orders(id) ON DELETE CASCADE,
+            created_at BIGINT NOT NULL
+        )
+        """)
+
+        cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_orders_user_created
+        ON orders(user_id, created_at DESC)
+        """)
+
+        cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_products_category
+        ON products(category_id, id ASC)
+        """)
 def upsert_user(user_id, username="", full_name=""):
     with get_db(commit=True) as (_, cur):
         cur.execute("""
