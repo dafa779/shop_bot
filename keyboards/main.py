@@ -12,16 +12,18 @@ def main_menu_kb():
                 InlineKeyboardButton(text="🏦 Top-up Balance", callback_data="menu:topup"),
             ],
             [
-                InlineKeyboardButton(text="📋 Purchase Notice", callback_data="menu:notice"),
                 InlineKeyboardButton(text="📊 Purchase History", callback_data="menu:orders"),
+                InlineKeyboardButton(text="📋 Purchase Notice", callback_data="menu:notice"),
             ],
             [
                 InlineKeyboardButton(text="🌐 My Language", callback_data="menu:lang"),
                 InlineKeyboardButton(text="🆘 Support", callback_data="menu:support"),
             ],
             [
-                InlineKeyboardButton(text="🛍 分销系统", url="https://example.com"),
                 InlineKeyboardButton(text="💎 飞机会员", callback_data="menu:vip"),
+            ],
+            [
+                InlineKeyboardButton(text="🛍 分销系统", url="https://example.com"),
             ],
         ]
     )
