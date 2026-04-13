@@ -19,19 +19,28 @@ router = Router()
 
 @router.callback_query(F.data == "menu:home")
 async def menu_home(c: types.CallbackQuery):
-    await c.message.answer("🏠 Main Menu", reply_markup=main_menu_kb())
+    await c.message.answer(
+        "🏠 <b>Main Menu</b>",
+        parse_mode="HTML",
+        reply_markup=main_menu_kb()
+    )
     await c.answer()
 
 
 @router.callback_query(F.data == "menu:shop")
 async def menu_shop(c: types.CallbackQuery):
     rows = fetch_categories()
+
     if not rows:
         await c.message.answer("❌ No categories available")
         await c.answer()
         return
 
-    await c.message.answer("🛒 请选择分类：", reply_markup=categories_kb(rows))
+    await c.message.answer(
+        "🛒 <b>Please choose a category:</b>",
+        parse_mode="HTML",
+        reply_markup=categories_kb(rows)
+    )
     await c.answer()
 
 
@@ -45,11 +54,15 @@ async def shop_category(c: types.CallbackQuery):
 
     rows = fetch_products_by_category(category_id)
     if not rows:
-        await c.message.answer("❌ No products found")
+        await c.message.answer("❌ No products found in this category")
         await c.answer()
         return
 
-    await c.message.answer("📦 请选择商品：", reply_markup=products_kb(rows))
+    await c.message.answer(
+        "📦 <b>Please choose a product:</b>",
+        parse_mode="HTML",
+        reply_markup=products_kb(rows)
+    )
     await c.answer()
 
 
@@ -63,7 +76,7 @@ async def shop_product(c: types.CallbackQuery):
 
     product = fetch_product(product_id)
     if not product:
-        await c.answer("商品不存在", show_alert=True)
+        await c.answer("❌ Product not found", show_alert=True)
         return
 
     await c.message.answer(
@@ -84,13 +97,16 @@ async def shop_buy(c: types.CallbackQuery, state: FSMContext):
 
     product = fetch_product(product_id)
     if not product:
-        await c.answer("商品不存在", show_alert=True)
+        await c.answer("❌ Product not found", show_alert=True)
         return
 
     await state.set_state(ShopFSM.waiting_quantity)
     await state.update_data(product_id=product_id)
 
-    await c.message.answer("🛒 Please enter the quantity to purchase, e.g.: 10")
+    await c.message.answer(
+        "🔢 <b>Please enter quantity</b>\nExample: <code>10</code>",
+        parse_mode="HTML"
+    )
     await c.answer()
 
 
@@ -110,7 +126,6 @@ async def shop_quantity(message: types.Message, state: FSMContext):
         return
 
     order, db_error = create_product_order(message.from_user.id, product_id, qty)
-
     if db_error:
         await message.answer(db_error)
         return
