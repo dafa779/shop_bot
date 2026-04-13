@@ -6,6 +6,8 @@ from .shop import router as shop_router
 from .wallet import router as wallet_router
 from .orders import router as orders_router
 from .support import router as support_router
+from .language import router as language_router
+from .energy import router as energy_router
 
 
 def register_all_routers(dp: Dispatcher):
@@ -15,3 +17,5 @@ def register_all_routers(dp: Dispatcher):
     dp.include_router(wallet_router)
     dp.include_router(orders_router)
     dp.include_router(support_router)
+    dp.include_router(language_router)
+    dp.include_router(energy_router)
