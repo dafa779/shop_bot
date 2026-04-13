@@ -16,17 +16,6 @@ from services.shop_service import (
 
 router = Router()
 
-
-@router.callback_query(F.data == "menu:home")
-async def menu_home(c: types.CallbackQuery):
-    await c.message.answer(
-        "🏠 <b>Main Menu</b>",
-        parse_mode="HTML",
-        reply_markup=main_menu_kb()
-    )
-    await c.answer()
-
-
 @router.callback_query(F.data == "menu:shop")
 async def menu_shop(c: types.CallbackQuery):
     rows = fetch_categories()
