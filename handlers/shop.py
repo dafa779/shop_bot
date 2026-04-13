@@ -3,16 +3,16 @@ from aiogram.fsm.context import FSMContext
 
 from keyboards.shop import categories_kb, products_kb, product_action_kb
 from keyboards.main import main_menu_kb
+from states import ShopFSM
 from services.shop_service import (
     fetch_categories,
     fetch_products_by_category,
     fetch_product,
     build_product_text,
-    validate_quantity,
+    validate_quantity_text,
     create_product_order,
     build_order_success_text,
 )
-from states import ShopFSM
 
 router = Router()
 
@@ -26,16 +26,12 @@ async def menu_home(c: types.CallbackQuery):
 @router.callback_query(F.data == "menu:shop")
 async def menu_shop(c: types.CallbackQuery):
     rows = fetch_categories()
-
     if not rows:
         await c.message.answer("❌ No categories available")
         await c.answer()
         return
 
-    await c.message.answer(
-        "🛒 请选择分类：",
-        reply_markup=categories_kb(rows)
-    )
+    await c.message.answer("🛒 请选择分类：", reply_markup=categories_kb(rows))
     await c.answer()
 
 
@@ -48,16 +44,12 @@ async def shop_category(c: types.CallbackQuery):
         return
 
     rows = fetch_products_by_category(category_id)
-
     if not rows:
-        await c.message.answer("❌ No products found in this category")
+        await c.message.answer("❌ No products found")
         await c.answer()
         return
 
-    await c.message.answer(
-        "📦 请选择商品：",
-        reply_markup=products_kb(rows)
-    )
+    await c.message.answer("📦 请选择商品：", reply_markup=products_kb(rows))
     await c.answer()
 
 
@@ -104,11 +96,10 @@ async def shop_buy(c: types.CallbackQuery, state: FSMContext):
 
 @router.message(ShopFSM.waiting_quantity)
 async def shop_quantity(message: types.Message, state: FSMContext):
-    if not message.text or not message.text.isdigit():
-        await message.answer("❌ Please enter a valid number")
+    qty, error = validate_quantity_text(message.text)
+    if error:
+        await message.answer(error)
         return
-
-    qty = int(message.text)
 
     data = await state.get_data()
     product_id = data.get("product_id")
@@ -118,18 +109,11 @@ async def shop_quantity(message: types.Message, state: FSMContext):
         await message.answer("❌ Session expired, please try again")
         return
 
-    product = fetch_product(product_id)
-    if not product:
-        await state.clear()
-        await message.answer("❌ 商品不存在")
-        return
+    order, db_error = create_product_order(message.from_user.id, product_id, qty)
 
-    ok, error_text = validate_quantity(product, qty)
-    if not ok:
-        await message.answer(error_text)
+    if db_error:
+        await message.answer(db_error)
         return
-
-    order = create_product_order(message.from_user.id, product, qty)
 
     await state.clear()
     await message.answer(
