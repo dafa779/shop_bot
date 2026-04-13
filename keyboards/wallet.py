@@ -18,11 +18,9 @@ def topup_amounts_kb():
     rows.append([
         InlineKeyboardButton(text="💰 Custom Amount", callback_data="topup:custom")
     ])
-
     rows.append([
-        InlineKeyboardButton(text="📦 Top-up Orders", callback_data="menu:topup_orders")
+        InlineKeyboardButton(text="📜 Top-up History", callback_data="menu:topup_orders")
     ])
-
     rows.append([
         InlineKeyboardButton(text="↩️ Back", callback_data="menu:home")
     ])
