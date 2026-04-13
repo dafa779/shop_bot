@@ -1,31 +1,46 @@
+from datetime import datetime
+
 from aiogram import Router, types, F
+
 from db import get_user
+from keyboards.profile import profile_kb
 
 router = Router()
 
 
-@router.callback_query(F.data == "menu:profile")
-async def menu_profile(c: types.CallbackQuery):
-    row = get_user(c.from_user.id)
+def fmt_ts(ts: int) -> str:
+    try:
+        return datetime.fromtimestamp(int(ts)).strftime("%Y-%m-%d %H:%M")
+    except Exception:
+        return "-"
+
+
+def build_profile_text(user_id: int) -> str:
+    row = get_user(user_id)
 
     if not row:
-        await c.message.answer("❌ User not found")
-        await c.answer()
-        return
+        return "❌ User not found"
 
-    user_id, username, full_name, balance, created_at = row
+    db_user_id, username, full_name, balance, created_at = row
 
-    text = (
+    username_text = f"@{username}" if username else "-"
+    full_name_text = full_name or "-"
+
+    return (
         f"👤 <b>Profile</b>\n\n"
-        f"🆔 User ID: <code>{user_id}</code>\n"
-        f"👤 Name: <b>{full_name or '-'}</b>\n"
-        f"📛 Username: <b>@{username}</b>\n" if username else
-        f"👤 <b>Profile</b>\n\n"
-        f"🆔 User ID: <code>{user_id}</code>\n"
-        f"👤 Name: <b>{full_name or '-'}</b>\n"
+        f"🆔 User ID: <code>{db_user_id}</code>\n"
+        f"👤 Full Name: <b>{full_name_text}</b>\n"
+        f"📛 Username: <b>{username_text}</b>\n"
+        f"💰 Balance: <b>{float(balance or 0):.2f} USDT</b>\n"
+        f"📅 Registered: <b>{fmt_ts(created_at)}</b>"
     )
 
-    text += f"💰 Balance: <b>{float(balance or 0):.2f} USDT</b>"
 
-    await c.message.answer(text, parse_mode="HTML")
+@router.callback_query(F.data == "menu:profile")
+async def menu_profile(c: types.CallbackQuery):
+    await c.message.answer(
+        build_profile_text(c.from_user.id),
+        parse_mode="HTML",
+        reply_markup=profile_kb()
+    )
     await c.answer()
