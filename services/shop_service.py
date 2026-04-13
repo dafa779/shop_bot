@@ -1,4 +1,9 @@
-from db import get_categories, get_products_by_category, get_product, create_order
+from db import (
+    get_categories,
+    get_products_by_category,
+    get_product,
+    purchase_product,
+)
 
 
 def fetch_categories():
@@ -19,9 +24,9 @@ def fetch_product(product_id: int):
         "id": product_id,
         "category_id": category_id,
         "title": title,
-        "price": price,
-        "stock": stock,
-        "description": description,
+        "price": float(price),
+        "stock": int(stock),
+        "description": description or "",
     }
 
 
@@ -34,26 +39,19 @@ def build_product_text(product: dict) -> str:
     )
 
 
-def validate_quantity(product: dict, qty: int):
+def validate_quantity_text(text: str):
+    if not text or not text.isdigit():
+        return None, "❌ Please enter a valid number"
+
+    qty = int(text)
     if qty <= 0:
-        return False, "❌ Quantity must be greater than 0"
+        return None, "❌ Quantity must be greater than 0"
 
-    if qty > product["stock"]:
-        return False, "❌ Quantity exceeds stock"
-
-    return True, None
+    return qty, None
 
 
-def create_product_order(user_id: int, product: dict, qty: int):
-    total_amount = product["price"] * qty
-    order_id = create_order(user_id, product["id"], qty, total_amount)
-
-    return {
-        "order_id": order_id,
-        "title": product["title"],
-        "qty": qty,
-        "amount": total_amount,
-    }
+def create_product_order(user_id: int, product_id: int, qty: int):
+    return purchase_product(user_id, product_id, qty)
 
 
 def build_order_success_text(order: dict) -> str:
@@ -62,5 +60,6 @@ def build_order_success_text(order: dict) -> str:
         f"Order ID: <code>{order['order_id']}</code>\n"
         f"Product: <b>{order['title']}</b>\n"
         f"Quantity: <b>{order['qty']}</b>\n"
-        f"Amount: <b>{order['amount']:.2f} USDT</b>"
+        f"Amount: <b>{order['amount']:.2f} USDT</b>\n"
+        f"Status: <b>{order['status']}</b>"
     )
